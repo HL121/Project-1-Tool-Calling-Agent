@@ -238,7 +238,7 @@ def find_nearest(query: str, latitude: float, longitude: float) -> dict | None:
     places = [
         {
             "name": place.get("displayName", {}).get("text", query),
-            "distance": f"{distance_m(latitude, longitude, place["location"]["latitude"], place["location"]["longitude"])} meters",
+            "distance": f"{distance_m(latitude, longitude, place['location']['latitude'], place['location']['longitude'])} meters",
         }
         for place in response.json().get("places", [])
     ]
