@@ -106,7 +106,7 @@
 
 ## `app.py` 的 agent prompt 设计思路
 
-tool 本身的用法写在 `tools.py` 的 `TOOLS` 描述里。system prompt 等所有 tool 完成后统一编写，需要包含以下几点，才能用好这两个 tool：
+tool 本身的用法写在 `tools.py` 的 `TOOLS` 描述里。system prompt可以考虑包含以下几点：
 
 - **search 结果要带完整地址和 `id`**：`commute_to` 用地址，`check_neighborhood_fit` 用 `id`。用户说"第二套"时，模型从对话历史里取对应的值。
 - **把纽约当前时间放进 prompt**：用户说"明天 9 点要到"时，模型才能填对 `arrive_by` 的日期和时区。
