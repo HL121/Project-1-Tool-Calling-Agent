@@ -9,4 +9,5 @@ dependencies = [
     "litellm>=1.50",
     "google-cloud-aiplatform>=1.40.0",
     "requests>=2.31",
+    "pandas>=2.3.3",
 ]
