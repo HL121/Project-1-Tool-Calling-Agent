@@ -8,7 +8,7 @@
 
 ## 共用数据层
 
-当前已经实现的数据层由 `scripts/prepare_data.py` 和 `data/nyc_rental_listings_clean.csv` 组成。清洗脚本负责从原始月度文件生成统一候选池；后续工具实现时应只读取这份清洗后的 CSV，不再各自读取或清洗原始文件。CSV 中的 `id` 是跨工具传递房源的主键，后续 `search_listings`、价格评估、通勤、楼宇检查和房源状态检查都应使用同一份数据。
+当前已经实现的数据层由 `scripts/data_prep/prepare_data.py` 和 `data/nyc_rental_listings_clean.csv` 组成。清洗脚本负责从原始月度文件生成统一候选池；后续工具实现时应只读取这份清洗后的 CSV，不再各自读取或清洗原始文件。CSV 中的 `id` 是跨工具传递房源的主键，后续 `search_listings`、价格评估、通勤、楼宇检查和房源状态检查都应使用同一份数据。
 
 候选池来自 2026 年 6、7、8 月三个快照，不限制 NYC borough，同时包含通过位置验证的 New Jersey 房源。当前生成结果有 70,599 条记录、26 个字段。项目部署到 Google Cloud Run 时，应将清洗后的 CSV、官方位置边界和地址验证缓存随 container image 一起打包；这属于部署要求，当前仓库尚未实现应用启动和 Cloud Run 服务。
 
@@ -27,7 +27,7 @@ df = pd.read_csv(
 运行以下命令重新生成候选池：
 
 ```bash
-python3 scripts/prepare_data.py
+python3 scripts/data_prep/prepare_data.py
 ```
 
 脚本读取 `data/firstmover-nyc-rental-listings/` 中 2026-06、2026-07 和 2026-08 三个月的快照。处理顺序如下：
@@ -289,7 +289,14 @@ headers = {
 
 ## Tool 4: `check_building_violations` / NYC Open Data
 
-作用：可选工具，用来查询房源所在建筑是否有公开的 HPD 房屋维护违规记录，例如噪音、虫害、漏水、供暖/热水等相关问题。
+作用：批量查询房源所在建筑是否有公开的 NYC HPD Housing Maintenance Code 违规记录，并按时间、严重程度、当前状态和问题类别生成结构化摘要。适合回答供暖、热水、虫害、霉菌、漏水、门窗、管道和消防安全等楼宇维护问题。一般生活噪音不属于这个数据集的主要覆盖范围。
+
+### 文件结构
+
+- `tools.py`：agent-facing wrapper、参数校验、function schema 和 `TOOL_MAP` 注册。
+- `scripts/tool4/building_violations.py`：地址处理、HPD 请求、分页、重试、分类和汇总。
+- `scripts/tool4/analyze_hpd_categories.py`：开发期分类规则分析辅助脚本，不参与在线 Tool 调用。
+- `data/hpd_analysis/hpd_violation_category_rules.json`：最终使用的类别正则映射表。
 
 API：
 
@@ -297,22 +304,182 @@ API：
 https://data.cityofnewyork.us/resource/wvxf-dwi5.json
 ```
 
-这个 API 来自 NYC Open Data 的 HPD Housing Maintenance Code Violations 数据集，不需要 API key。
+这个 API 来自 NYC Open Data 的 HPD Housing Maintenance Code Violations 数据集，不需要 API key。Tool 只支持纽约市五区；New Jersey 房源会返回 `unsupported_location`。
 
 参数：
 
-- `listing_id`：必填。
+- `listing_ids`：必填，包含 1–50 个唯一整数 ID 的数组。ID 来自 `search_listings` 返回结果。
 
-基本逻辑：
+调用示例：
 
-1. 根据 `listing_id` 找到房源地址和 zip code。
-2. 把 CSV 里的地址转换成 HPD API 更容易匹配的格式。例如 `327 East 83rd Street` 转成门牌号 `327` 和街道名 `EAST 83 STREET`。
-3. 用 `housenumber`、`streetname`、`zip` 查询 NYC Open Data。
-4. 统计违规总数、不同等级数量、状态数量。
-5. 从违规描述里做简单关键词统计，例如 `heat`、`hot water`、`roach`、`mice`、`bedbugs`、`mold`、`leak`。
-6. 返回最近几条违规描述。
+```python
+check_building_violations(
+    listing_ids=[5147514, 5148048],
+)
+```
 
-注意：如果查不到记录，不能直接说这栋楼完全没有问题；只能说没有匹配到公开记录，也可能是地址格式没有完全匹配。
+Tool schema 不接受时间窗口参数；每次固定计算最近 1 年、3 年和 5 年的结果。
+
+### 查询流程
+
+1. `tools.py` 验证 `listing_ids` 非空、不重复、全部为整数且不超过 50 个。
+2. 根据每个 `listing_id` 从 `data/nyc_rental_listings_clean.csv` 读取 `normalized_address`、`zip_code`、`borough` 和 `state`。
+3. 直接使用已有的 `normalized_address` 拆分门牌号和街道名，只对 HPD 查询字段做轻量适配：
+   - `E` → `EAST`
+   - `63RD` → `63`
+   - `ST` → `STREET`
+   - `AVE` → `AVENUE`
+4. 使用 `state + zip_code + normalized_address` 作为楼栋去重键。同一栋楼中的多个 listing 只请求一次 HPD，再把同一份楼栋摘要映射回各个 `listing_id`。
+5. 调用 HPD API 时按以下字段精确查询：
+
+```sql
+boro = 'BROOKLYN'
+AND zip = '11214'
+AND housenumber = '2230'
+AND streetname = 'CROPSEY AVENUE'
+```
+
+6. 每页最多读取 1,000 条，并按 `violationid` 分页，直到取完该地址的匹配记录。
+7. 按严重程度、状态、类别和 1/3/5 年窗口汇总，再返回最近 5 年最多 10 条仍未关闭的 Class B/C 记录。
+
+### 批量查询与失败隔离
+
+- 最多并发查询 5 个唯一楼栋。
+- 单个页面默认 timeout 为 15 秒。
+- timeout、网络错误及 HTTP 429/500/502/503/504 最多尝试 3 次。
+- 重试退避为 0.5 秒、1 秒。
+- 某栋楼最终失败只影响对应 listing，不会终止整个 batch。
+- 如果分页中途失败，不会使用不完整记录生成摘要。
+
+API 失败会返回类似：
+
+```json
+{
+  "listing_id": 123,
+  "status": "api_error",
+  "error": "HPD API request timed out",
+  "error_type": "timeout",
+  "retryable": true,
+  "attempts": 3
+}
+```
+
+### 严重程度与状态
+
+`class` 直接使用 HPD 的官方级别：
+
+- `A`：non-hazardous。
+- `B`：hazardous。
+- `C`：immediately hazardous。
+- `I`：information order。
+
+状态为 `VIOLATION CLOSED` 或 `VIOLATION DISMISSED` 时计入 `closed_or_dismissed`；其他状态计入 `open_or_pending`，同时在 `by_status` 中保留 HPD 原始状态文本。
+
+### Category 分类
+
+HPD 没有可直接使用的统一问题类别，因此 Tool 使用 `data/hpd_analysis/hpd_violation_category_rules.json` 对 `novdescription` 做规则分类。当前类别包括：
+
+- `heat_hot_water`
+- `pests_bedbugs`
+- `mold_moisture_leaks`
+- `lead_paint`
+- `smoke_co_detectors`
+- `fire_safety_egress`
+- `gas`
+- `electrical`
+- `plumbing_sewer`
+- `doors_windows_locks`
+- `walls_ceilings_floors`
+- `structural_exterior`
+- `sanitation_garbage`
+- `ventilation`
+- `lighting`
+- `elevator`
+- `registration_signage_admin`
+- `appliances`
+- `bathroom_kitchen_fixtures`
+- `occupancy_conversion`
+
+规则按 JSON 中的顺序匹配，第一个匹配项作为主类别，没有匹配的记录归入 `other`。运行以下命令可以从真实 HPD 数据抽样并在终端查看简短覆盖率和高频 `other`，但不会生成额外分析报告：
+
+```bash
+python3 scripts/tool4/analyze_hpd_categories.py
+```
+
+### 返回结构
+
+成功结果示例：
+
+```json
+{
+  "requested_count": 1,
+  "matched_listing_count": 1,
+  "unique_building_count": 1,
+  "results": [
+    {
+      "listing_id": 5147514,
+      "status": "success",
+      "matched_address": "2230 CROPSEY AVENUE, BROOKLYN 11214",
+      "building_ids": ["1013747"],
+      "summary": {
+        "as_of": "2026-10-05",
+        "all_time": {
+          "total": 23,
+          "open_or_pending": 5,
+          "closed_or_dismissed": 18
+        },
+        "time_windows": {
+          "1_year": {
+            "total": 7,
+            "open_or_pending": 5,
+            "by_severity": {"A": 1, "B": 1, "C": 5},
+            "by_status": {},
+            "by_category": {"heat_hot_water": 4}
+          },
+          "3_years": {
+            "total": 23,
+            "open_or_pending": 5,
+            "by_severity": {"A": 6, "B": 9, "C": 8},
+            "by_status": {},
+            "by_category": {"heat_hot_water": 9}
+          },
+          "5_years": {
+            "total": 23,
+            "open_or_pending": 5,
+            "by_severity": {"A": 6, "B": 9, "C": 8},
+            "by_status": {},
+            "by_category": {"heat_hot_water": 9}
+          }
+        },
+        "recent_serious_open_violations": []
+      }
+    }
+  ],
+  "disclaimer": "HPD records are public administrative records..."
+}
+```
+
+每个时间窗口包含：
+
+- `total`
+- `open_or_pending`
+- `by_severity`
+- `by_status`
+- `by_category`
+
+`recent_serious_open_violations` 固定基于最近 5 年，只包含仍处于 open/pending 状态的 Class B/C 记录，每栋楼最多返回 10 条。
+
+### 每个 listing 可能返回的状态
+
+| 状态 | 含义 |
+| --- | --- |
+| `success` | 地址匹配到至少一条 HPD 违规记录并完成汇总。 |
+| `listing_not_found` | `listing_id` 不在本地候选数据中。 |
+| `unsupported_location` | 房源不在 NYC，例如 New Jersey。 |
+| `address_parse_error` | 无法从 `normalized_address` 拆出门牌号和街道名。 |
+| `no_public_records_or_address_match` | API 返回零行；可能没有公开记录，也可能是地址未精确匹配。 |
+| `api_error` | HPD 网络请求或服务端请求失败。 |
+| `internal_error` | 单个楼栋 worker 出现非网络类异常，其他楼栋仍继续。 |
 
 ## Tool 5: `feng_shui_reading`
 

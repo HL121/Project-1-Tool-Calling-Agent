@@ -1,5 +1,7 @@
 """The tools the harness can run, and the JSON that describes them to the model."""
 
+from __future__ import annotations
+
 import json
 import math
 import os
@@ -14,6 +16,9 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 import requests
 
+from scripts.tool4.building_violations import (
+    check_building_violations as query_hpd_building_violations,
+)
 
 
 # --- Tool: commute_to ---
@@ -207,6 +212,42 @@ listings = pd.read_csv(
     dtype={"zip_code": "string"},
     parse_dates=["created_at_utc", "available_date"],
 ).set_index("id")
+
+
+# --- Tool: check_building_violations ---
+
+MAX_HPD_LISTINGS = 50
+
+
+def check_building_violations(listing_ids: list[int]) -> str:
+    """Return public HPD violation summaries for one or more known listings."""
+    if not isinstance(listing_ids, list) or not listing_ids:
+        return json.dumps({
+            "ok": False,
+            "error": "listing_ids must be a non-empty list.",
+            "suggestion": "Pass one or more listing_id values returned by search_listings.",
+        })
+    if len(listing_ids) > MAX_HPD_LISTINGS:
+        return json.dumps({
+            "ok": False,
+            "error": f"listing_ids cannot contain more than {MAX_HPD_LISTINGS} ids.",
+            "suggestion": "Split the listings into smaller batches and retry.",
+        })
+    if any(isinstance(value, bool) or not isinstance(value, int) for value in listing_ids):
+        return json.dumps({
+            "ok": False,
+            "error": "Every listing_id must be an integer.",
+            "suggestion": "Use the unmodified listing_id values returned by search_listings.",
+        })
+    if len(set(listing_ids)) != len(listing_ids):
+        return json.dumps({
+            "ok": False,
+            "error": "listing_ids cannot contain duplicates.",
+            "suggestion": "Remove repeated ids and retry the HPD check.",
+        })
+
+    result = query_hpd_building_violations(listing_ids)
+    return json.dumps(result, ensure_ascii=False)
 
 
 # --- Tool: search_listings ---
@@ -1262,6 +1303,37 @@ TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "check_building_violations",
+            "description": (
+                "Check public NYC HPD Housing Maintenance Code violation records for one or more known rental listings. "
+                "Use when the user asks about building violations, maintenance history, heat or hot-water problems, pests, mold,leaks, plumbing, or other HPD-recorded conditions."
+                "Returns fixed 1-year, 3-year, and 5-year summaries by severity, status, and category, plus recent open Class B/C violations."
+                "New Jersey listings are unsupported."
+                "A result of no_public_records_or_address_match does not prove the building has no problems; it may also mean the address did not match HPD exactly. "
+                "Pass all known listings in one batch instead of calling once per listing."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "listing_ids": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                        "minItems": 1,
+                        "maxItems": MAX_HPD_LISTINGS,
+                        "uniqueItems": True,
+                        "description": (
+                            "One or more listing_id values returned by search_listings."
+                        ),
+                    },
+                },
+                "required": ["listing_ids"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "check_neighborhood_fit",
             "description": "Check whether the area around one listing fits the user's lifestyle: places they want within walking distance (800 m) and dealbreakers right next door (150 m, about the same block). "
             "Returns the closest matching place and its distance for each item. "
@@ -1299,6 +1371,7 @@ TOOL_MAP = {
     "search_listings": search_listings,
     "rank_listings": rank_listings,
     "commute_to": commute_to,
+    "check_building_violations": check_building_violations,
     "check_neighborhood_fit": check_neighborhood_fit,
 }
 

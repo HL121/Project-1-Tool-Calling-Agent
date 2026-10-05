@@ -1,0 +1,86 @@
+{
+  "version": 2,
+  "description": "Rule-based categories for HPD Housing Maintenance Code violation NOV descriptions. Patterns are case-insensitive regular expressions evaluated in category order.",
+  "categories": [
+    {
+      "name": "heat_hot_water",
+      "patterns": ["\\bHOT WATER\\b", "\\bHEAT(?:ING)?\\b", "\\bBOILER\\b", "\\bRADIATOR\\b"]
+    },
+    {
+      "name": "pests_bedbugs",
+      "patterns": ["\\bBED[ -]?BUGS?\\b", "\\bCOCKROACH(?:ES)?\\b", "\\bROACH(?:ES)?\\b", "\\bMICE\\b", "\\bMOUSE\\b", "\\bRATS?\\b", "\\bRODENTS?\\b", "\\bVERMIN\\b", "\\bPESTS?\\b"]
+    },
+    {
+      "name": "mold_moisture_leaks",
+      "patterns": ["\\bMOLD\\b", "\\bMOULD\\b", "\\bLEAK(?:ING|AGE|S)?\\b", "\\bWATER PENETRATION\\b", "\\bMOISTURE\\b", "\\bDAMP(?:NESS)?\\b"]
+    },
+    {
+      "name": "lead_paint",
+      "patterns": ["\\bLEAD[ -](?:BASED )?PAINT\\b", "\\bLEAD HAZARD\\b", "\\bLEAD-BASED\\b", "\\bPEELING LEAD\\b"]
+    },
+    {
+      "name": "smoke_co_detectors",
+      "patterns": ["\\bSMOKE DETECT(?:OR|ING DEVICE)S?\\b", "\\bCARBON MONOXIDE\\b", "\\bCO DETECT(?:OR|ING DEVICE)S?\\b"]
+    },
+    {
+      "name": "fire_safety_egress",
+      "patterns": ["\\bFIRE ESCAPE\\b", "\\bFIREPROOF\\b", "\\bFIRE DOOR\\b", "\\bSELF[- ]CLOSING\\b", "\\bEGRESS\\b", "\\bSPRINKLER\\b", "\\bENCUMBRANCES?\\b"]
+    },
+    {
+      "name": "gas",
+      "patterns": ["\\bGAS LEAK\\b", "\\bGAS SUPPLY\\b", "\\bGAS PIP(?:E|ING)\\b", "\\bGAS-FIRED\\b", "\\bGAS FIRED\\b"]
+    },
+    {
+      "name": "electrical",
+      "patterns": ["\\bELECTRIC(?:AL|ITY)?\\b", "\\bWIRING\\b", "\\bOUTLET\\b", "\\bRECEPTACLE\\b", "\\bCIRCUIT BREAKER\\b", "\\bFUSE BOX\\b"]
+    },
+    {
+      "name": "plumbing_sewer",
+      "patterns": ["\\bPLUMBING\\b", "\\bSEWER\\b", "\\bDRAIN(?:AGE)?\\b", "\\bWASTE PIPE\\b", "\\bWATER SUPPLY\\b", "\\bFAUCETS?\\b", "\\bTOILET\\b", "\\bWATER CLOSET\\b", "\\bSINK\\b", "\\bWASH ?BASIN\\b", "\\bESCUTCHEON\\b"]
+    },
+    {
+      "name": "doors_windows_locks",
+      "patterns": ["\\bWINDOWS?\\b", "\\bDOORS?\\b", "\\bLOCKS?\\b", "\\bENTRANCE\\b", "\\bSASH\\b", "\\bPANE\\b", "\\bWINDOW GUARD\\b"]
+    },
+    {
+      "name": "walls_ceilings_floors",
+      "patterns": ["\\bCEILINGS?\\b", "\\bWALLS?\\b", "\\bFLOOR(?:ING|S)?\\b", "\\bPLASTER\\b", "\\bPAINT AND PLASTER\\b", "\\bCERAMIC TILE\\b", "\\bTREAD\\b", "\\bPORCELAIN ENAMEL\\b"]
+    },
+    {
+      "name": "structural_exterior",
+      "patterns": ["\\bSTRUCTUR(?:E|AL)\\b", "\\bROOF(?:ING|S)?\\b", "\\bFACADE\\b", "\\bFOUNDATION\\b", "\\bEXTERIOR WALL\\b", "\\bPARAPET\\b", "\\bPOINTING\\b"]
+    },
+    {
+      "name": "sanitation_garbage",
+      "patterns": ["\\bGARBAGE\\b", "\\bREFUSE\\b", "\\bRUBBISH\\b", "\\bSANITARY\\b", "\\bUNSANITARY\\b", "\\bSANITATION\\b", "\\bCLEAN(?:SE|SED|SING|LINESS)?\\b", "\\bDISINFECT\\b", "\\bFILTH\\b"]
+    },
+    {
+      "name": "ventilation",
+      "patterns": ["\\bVENTILAT(?:E|ED|ION)\\b", "\\bAIR SHAFT\\b", "\\bEXHAUST FAN\\b"]
+    },
+    {
+      "name": "lighting",
+      "patterns": ["\\bLIGHT(?:ING| FIXTURE)?S?\\b", "\\bILLUMINAT(?:E|ION)\\b"]
+    },
+    {
+      "name": "elevator",
+      "patterns": ["\\bELEVATORS?\\b", "\\bLIFTS?\\b"]
+    },
+    {
+      "name": "registration_signage_admin",
+      "patterns": ["\\bREGISTRATION STATEMENT\\b", "\\bREGISTER THE (?:BUILDING|PROPERTY|PREMISES)\\b", "\\bPOST (?:AND MAINTAIN )?(?:A |THE )?(?:PROPER )?(?:SIGN|NOTICE)\\b", "\\bCERTIFICATE OF INSPECTION VISITS\\b", "\\bJANITOR\\b", "\\bSUPERINTENDENT\\b", "\\bHOUSEKEEPER\\b", "\\bSTREET NUMBER\\b", "\\bMAILBOX\\b"]
+    },
+    {
+      "name": "appliances",
+      "patterns": ["\\bREFRIGERATOR\\b", "\\bSTOVE\\b", "\\bRANGE\\b", "\\bOVEN\\b", "\\bAPPLIANCE\\b"]
+    },
+    {
+      "name": "bathroom_kitchen_fixtures",
+      "patterns": ["\\bBATHTUB\\b", "\\bSHOWER\\b", "\\bWASH BASIN\\b", "\\bKITCHEN CABINET\\b", "\\bMEDICINE CABINET\\b"]
+    },
+    {
+      "name": "occupancy_conversion",
+      "patterns": ["\\bCERTIFICATE OF OCCUPANCY\\b", "\\bLAWFUL OCCUPANCY\\b", "\\bILLEGAL CONVERSION\\b", "\\bCONVERTED FROM (?:A )?PRIVATE DWELLING\\b", "\\bMULTIPLE DWELLING USE\\b"]
+    }
+  ]
+}
