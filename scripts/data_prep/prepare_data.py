@@ -11,7 +11,10 @@ from pathlib import Path
 
 import pandas as pd
 
-from spatial_location import SpatialLocationIndex
+try:
+    from .spatial_location import SpatialLocationIndex
+except ImportError:  # Support direct execution: python3 scripts/data_prep/prepare_data.py
+    from spatial_location import SpatialLocationIndex
 
 
 MONTH_PATTERN = re.compile(r"(?P<year>20\d{2})-(?P<month>[A-Za-z]{3})")
