@@ -151,23 +151,74 @@ CSV 中必要字段：
 4. 按价格或发布时间排序。
 5. 返回前几条关键结果；媒体及 open house 详情通过 `url` 按需查询。
 
-## Tool 2: `assess_price_fairness`
+## Tool 2: `rank_listings`
 
-作用：判断某套房的价格相对同类房源是偏低、合理还是偏高。
+作用：对用户正在比较的 2–10 套候选房源做可解释排名。工具始终计算每套房的市场价格价值分数；如果 agent 已经调用了通勤或社区匹配工具，还可以把那些**已经验证过的结构化结果**纳入综合排名。它不只是回答“偏高还是偏低”，而是解释每套房为什么排在这个位置。
+
+Tool 2 不在内部调用 Google API，也不重新实现其他工具。`commute_to` 和 `check_neighborhood_fit` 仍由 agent 按用户实际需求调用，再把它们的摘要传给 `rank_listings`。这样可以避免重复付费、隐藏的网络调用，以及模型凭空编造通勤或生活便利度。
 
 参数：
 
-- `listing_id`：必填。
+- `listing_ids`：必填，2–10 个来自 `search_listings` 的房源 id；顺序不影响最终排名。
+- `price_weight`：可选，价格价值的权重，默认 `0.5`。
+- `commute_weight`：可选，通勤的权重，默认 `0.3`；只有所有候选都有通勤结果时才启用。
+- `neighborhood_weight`：可选，社区生活匹配的权重，默认 `0.2`；只有所有候选都有社区结果时才启用。
+- `commute_summaries`：可选，来自 `commute_to` 的已验证摘要，每项包含 `listing_id` 和用户关心的路线 `duration_min`。
+- `neighborhood_summaries`：可选，来自 `check_neighborhood_fit` 的已验证摘要，每项包含 `listing_id`、`wants_met`、`wants_total` 和 `dealbreakers_hit`。
+- `max_commute_minutes`：可选，用户能接受的最长通勤时间，用于把分钟数转换成 0–100 分；用户没有给出时使用清楚标注的默认值。
 
-基本逻辑：
+价格价值分数：
 
-1. 根据 `listing_id` 找到目标房源。
-2. 使用目标房源的 `effective_rent` 作为比较价格。
-3. 找可比房源：优先选择同一 `neighborhood`、同样 `bedrooms` 的房源，并排除目标房源本身。
-4. 如果同街区样本太少，可以退到同一 `borough`、同样卧室数。
-5. 计算可比房源的中位数、25% 分位数、75% 分位数，以及目标房源在可比样本中的百分位。
-6. 根据百分位给出结论，例如明显低于市场、略低、合理、略高、明显偏高。
-7. 如果使用 1 月到 8 月多个月数据，可以顺便返回该区域和户型的月度中位数趋势。
+1. 根据每个 `listing_id` 找到目标房源，统一使用 `effective_rent`。
+2. 优先选择同一 `neighborhood`、相同 `bedrooms` 的可比房源，并排除本次参与排名的目标房源。
+3. 如果同街区的有效样本少于 20 条，则退到同一 `borough`、相同 `bedrooms`；返回结果必须说明实际使用了哪一级可比范围。
+4. 计算样本数、中位数、25%/75% 分位数、目标租金相对中位数的差额百分比，以及目标房源在可比样本中的价格百分位。
+5. 将价格百分位转换为 `price_value_score`：相对更便宜的房源得分更高。仍同时返回“明显低于市场、略低、合理、略高、明显偏高”等文字标签，方便解释，但标签不再是唯一输出。
+
+其他维度：
+
+1. `commute_score` 只根据传入的真实 `duration_min` 和 `max_commute_minutes` 计算；时间越短分数越高。
+2. `neighborhood_score` 根据 `wants_met / wants_total` 计算；`dealbreakers_hit > 0` 必须作为强警告，并把该房源排在没有踩雷的候选之后，而不是用其他高分掩盖雷区。
+3. Tool 4 的公开违规记录可以作为 `warnings` 或硬风险标记，但暂时不直接转换成综合分数。大型或老旧建筑天然可能有更多历史记录；在没有按严重级别、时间和楼宇规模归一化前，简单用违规总数扣分会产生误导。
+4. 权重只在所有候选都具备该维度的数据时生效。如果任一候选缺少某维度，该维度对本次所有候选都不计分，权重在其余可用维度间重新归一化，并在 `missing_signals` 中告诉 agent 还需要调用哪些工具。
+5. 所有传入的摘要都必须属于 `listing_ids`；拒绝未知 id、重复 id、负权重、无效分钟数，以及明显不是相应工具结果的结构。
+
+建议返回结构：
+
+```json
+{
+  "ranking_scope": ["price_value", "commute", "neighborhood_fit"],
+  "weights_used": {
+    "price_value": 0.5,
+    "commute": 0.3,
+    "neighborhood_fit": 0.2
+  },
+  "rankings": [
+    {
+      "rank": 1,
+      "listing_id": 5096445,
+      "overall_score": 84.2,
+      "score_breakdown": {
+        "price_value": 91.0,
+        "commute": 74.0,
+        "neighborhood_fit": 90.0
+      },
+      "market_context": {
+        "comparison_scope": "same neighborhood and bedrooms",
+        "sample_size": 143,
+        "median_effective_rent": 3450,
+        "price_percentile": 9.0,
+        "difference_from_median_pct": -10.1
+      },
+      "reasons": ["Lowest price percentile", "All lifestyle wants met"],
+      "warnings": []
+    }
+  ],
+  "missing_signals": {}
+}
+```
+
+如果只传 `listing_ids`，工具仍然可以给出完整的价格价值排名，并在 `ranking_scope` 中明确说明这是 price-only ranking。最终结果必须是决策辅助而不是绝对结论；静态数据不能证明房源当前仍可租。
 
 ## Tool 3: `commute_to` / Google Maps Routes API
 
@@ -337,3 +388,45 @@ commute_to(listing_id=5119369, destination="Columbia University")
 agent 应该从上一轮搜索结果中找到“第二套”对应的 `listing_id`，然后直接调用 `commute_to`。
 
 因此 system prompt 里可以说明：当用户说“第二套”“那个 Williamsburg 的房子”时，agent 应该从对话历史中找到对应的 `listing_id`；只有在用户没有给出具体房源、也没有可引用的历史房源时，才需要先用 `search_listings` 找候选房源。
+
+## Tool 1 implementation
+
+`search_listings` is implemented and registered in `tools.py`. It searches the
+shared `data/nyc_rental_listings_clean.csv` candidate pool already loaded by the
+other listing-based tools, so it does not repeat the data preparation pipeline.
+
+Supported filters are `borough`, `neighborhood`, minimum/maximum bedrooms,
+minimum/maximum bathrooms, minimum/maximum effective rent,
+furnished/unfurnished, and new development only. Results can be sorted by
+effective rent or publication time.
+Common location aliases such as `BK`, `Kings County`, `NYC`, `NJ`, `Bed-Stuy`,
+`UES`, and `FiDi` are accepted. Partial names such as `Chelsea` can match the
+official dataset name `Chelsea-Hudson Yards`; unmatched names return suggestions
+instead of silently broadening the search.
+
+The callable returns JSON text in the same format as the existing tool harness:
+
+```python
+import json
+
+from tools import search_listings
+
+result = json.loads(search_listings(
+    borough="Brooklyn",
+    neighborhood="Williamsburg",
+    max_price=3_500,
+    sort_by="price_asc",
+    limit=5,
+))
+```
+
+Each result includes the `listing_id`, display address, bedroom/bathroom count,
+effective and asking rents, furnishing/new-development flags, data freshness,
+and the original listing URL. The response warns that the CSV is a static
+June-August 2026 candidate set and that current availability must be confirmed.
+
+Run the Tool 1 unit and real-data integration tests with:
+
+```bash
+uv run --with pandas --with pytest python -m pytest tests/test_search_listings.py
+```
