@@ -115,7 +115,9 @@ TOOLS = [
                 "for recommendations. Apply only constraints the user stated; do not invent "
                 "a neighborhood, budget, bedroom count, furnishing choice, or new-development "
                 "preference. Price means monthly effective rent. The results include listing_id "
-                "values for follow-up tools, listing URLs, and an inventory freshness warning."
+                "values for follow-up tools, listing URLs, and an inventory freshness warning. "
+                "It cannot filter by distance, commute or destination. To compare commutes, "
+                "search first, then call commute_to for each result."
             ),
             "parameters": {
                 "type": "object",
@@ -303,7 +305,7 @@ TOOLS = [
                 "properties": {
                     "origin": {
                         "type": "string",
-                        "description": "Full street address of the apartment, e.g. '327 East 83rd Street, New York, NY'.",
+                        "description": "The apartment's complete address. For a listing from search_listings, copy its full_address field exactly, e.g. '1-10 56th Avenue, Unit 508, Queens, NY 11101'. For an address the user typed, include the borough or city, state and ZIP when known.",
                     },
                     "destination": {
                         "type": "string",

@@ -1,203 +1,695 @@
 <!doctype html>
 <html lang="en">
-    <head>
-        <meta charset="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Gemini Web Tool Calling</title>
-        <style>
-            * {
-                box-sizing: border-box;
-                margin: 0;
-                padding: 0;
-            }
-            body {
-                font-family: system-ui, sans-serif;
-                height: 100vh;
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                padding: 3rem 1rem;
-            }
-            #container {
-                width: 100%;
-                max-width: 900px;
-                display: flex;
-                flex-direction: column;
-                border: 1px solid #e0e0e0;
-            }
-            #messages {
-                overflow-y: auto;
-                padding: 2rem;
-                display: flex;
-                flex-direction: column;
-                gap: 1.5rem;
-                min-height: 450px;
-                max-height: 70vh;
-            }
-            .msg {
-                line-height: 1.5;
-                max-width: 80%;
-            }
-            .msg.user {
-                align-self: flex-end;
-                text-align: right;
-            }
-            .msg .role {
-                font-size: 0.75rem;
-                text-transform: uppercase;
-                letter-spacing: 0.05em;
-                color: #999;
-                margin-bottom: 0.25rem;
-            }
-            .msg.loading .content {
-                color: #999;
-            }
-            #input-area {
-                display: flex;
-                gap: 1rem;
-                padding: 1.5rem;
-                border-top: 1px solid #e0e0e0;
-            }
-            #user-input {
-                flex: 1;
-                padding: 0.75rem 0;
-                border: none;
-                border-bottom: 1px solid #e0e0e0;
-                font-size: 1rem;
-                outline: none;
-            }
-            #user-input:focus {
-                border-bottom-color: #000;
-            }
-            button {
-                padding: 0.75rem 1.5rem;
-                background: #000;
-                color: #fff;
-                border: none;
-                font-size: 0.75rem;
-                text-transform: uppercase;
-                letter-spacing: 0.05em;
-                cursor: pointer;
-            }
-            .tool {
-                font-family: ui-monospace, monospace;
-                font-size: 0.75rem;
-                color: #555;
-                background: #f5f5f5;
-                border-left: 3px solid #f59e0b;
-                padding: 0.5rem 0.75rem;
-                margin: 0.25rem 0 0.75rem;
-                white-space: pre-wrap;
-                word-break: break-word;
-            }
-            .tool .label {
-                text-transform: uppercase;
-                letter-spacing: 0.05em;
-                color: #b45309;
-            }
-            .tool summary {
-                cursor: pointer;
-            }
-            .tool pre {
-                margin-top: 0.75rem;
-                white-space: pre-wrap;
-                word-break: break-word;
-            }
-            button:disabled {
-                opacity: 0.3;
-            }
-        </style>
-    </head>
-    <body>
-        <div id="container">
-            <div id="messages"></div>
-            <div id="input-area">
-                <input
-                    type="text"
-                    id="user-input"
-                    placeholder="Type a message..."
-                    autocomplete="off"
-                />
-                <button id="send-btn">Send</button>
-            </div>
-        </div>
-        <script>
-            const messages = document.getElementById("messages");
-            const userInput = document.getElementById("user-input");
-            const sendBtn = document.getElementById("send-btn");
-            let sessionId = null;
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Stoop · NYC Rental Agent</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2317633f'/%3E%3Cpath d='M7 25h18v-4h-5v-4h-5v-4h-4V9H7z' fill='white'/%3E%3C/svg%3E" />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700&family=Source+Sans+3:wght@400;600&family=JetBrains+Mono:wght@400;500&display=swap" />
+<!-- Markdown rendering for the model's answers, and sanitizing it before it goes into the page -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
+<style>
+/* Dark "street sign" sidebar with chat history, one reading column on the right.
+   Concrete greys + one street-sign green. */
+:root {
+  --paper: #f2f3f1; --card: #fff; --sunk: #e8eae6; --ink: #15181a; --muted: #5a6166;
+  --line: #d9dcd8; --green: #17633f; --green-ink: #fff; --warn: #a35a12;
+  --side: #15181a; --side-ink: #e9ece9; --side-hover: #24292c;
+  --display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --body: "Source Sans 3", -apple-system, "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #121416; --card: #1b1e21; --sunk: #23272a; --ink: #e7eae8; --muted: #a2aaae;
+    --line: #2e3337; --green: #4fb07f; --green-ink: #0d1a13; --warn: #e0a060;
+    --side: #0b0d0e; --side-hover: #1c2023; color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--paper); color: var(--ink); font: 19px/1.6 var(--body); }
+button, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+#app { height: 100%; display: grid; grid-template-columns: var(--side-w, 300px) minmax(0, 1fr); }
 
-            function addMessage(role, text, isLoading = false) {
-                const div = document.createElement("div");
-                div.className =
-                    "msg " +
-                    (role === "you" ? "user" : "assistant") +
-                    (isLoading ? " loading" : "");
-                div.innerHTML =
-                    '<div class="role">' +
-                    role +
-                    '</div><div class="content">' +
-                    text +
-                    "</div>";
-                messages.appendChild(div);
-                messages.scrollTop = messages.scrollHeight;
-                return div;
-            }
+/* Sidebar */
+aside { position: relative; background: var(--side); color: var(--side-ink); display: flex; flex-direction: column; gap: 14px; padding: 16px 12px; min-height: 0; }
+#resizer { position: absolute; top: 0; right: -4px; bottom: 0; width: 8px; cursor: col-resize; z-index: 5; }
+#resizer:hover, #resizer.dragging { background: linear-gradient(to right, transparent 3px, var(--green) 3px 5px, transparent 5px); }
+body.resizing { cursor: col-resize; user-select: none; }
+.brand { display: flex; align-items: center; gap: 10px; padding: 0 6px; }
+.brand b { font: 700 24px var(--display); }
+.brand span { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; opacity: .65; }
+.logo { width: 34px; height: 34px; border-radius: 7px; background: var(--green); display: grid; place-items: center; flex: none; }
+.logo path { fill: var(--green-ink); }
+#new-chat { border: 1px solid #ffffff33; background: none; color: inherit; border-radius: 8px; padding: 11px 14px; text-align: left; font-weight: 600; }
+#new-chat:hover { background: var(--side-hover); }
+.side-label { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; opacity: .55; padding: 0 8px; }
+#history { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1; display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 2px; }
+#history li { display: flex; align-items: center; border-radius: 8px; }
+#history li:hover, #history li.active { background: var(--side-hover); }
+#history .open { flex: 1; min-width: 0; text-align: left; background: none; border: 0; padding: 9px 12px; font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#history .del { background: none; border: 0; opacity: .45; padding: 4px 10px; font-size: 20px; line-height: 1; }
+#history .del:hover { opacity: 1; color: var(--warn); }
+#history .empty { font-size: 16px; opacity: .55; padding: 4px 8px; }
+.side-note { font-size: 14px; opacity: .55; padding: 0 8px; }
 
-            async function send() {
-                const text = userInput.value.trim();
-                if (!text) return;
+/* Chat column */
+.chat { display: flex; flex-direction: column; min-height: 0; }
+.topbar { display: none; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--line); font-weight: 600; }
+#menu { background: none; border: 1px solid var(--line); border-radius: 6px; padding: 2px 10px; }
+main { flex: 1; overflow-y: auto; padding: 28px 24px 20px; }
+#messages { max-width: 900px; margin: 0 auto; display: flex; flex-direction: column; gap: 26px; }
+#welcome { display: grid; gap: 16px; }
+#welcome p.note { font-size: 16px; }
+#welcome h1 { font: 600 clamp(34px, 4.5vw, 54px)/1.1 var(--display); margin: 0; text-wrap: balance; }
+#welcome p { margin: 0; color: var(--muted); max-width: 64ch; font-size: 21px; }
+.eyebrow { font-size: 14px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.caps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 0 32px; }
+.caps li { padding-block: 12px; border-top: 1px solid var(--line); font-weight: 600; }
+.caps small { display: block; color: var(--muted); font-size: 17px; font-weight: 400; }
 
-                userInput.value = "";
-                sendBtn.disabled = true;
-                addMessage("you", text);
-                const loading = addMessage("assistant", "Thinking...", true);
+/* Messages */
+.user { align-self: flex-end; max-width: 85%; background: var(--ink); color: var(--paper); border-radius: 16px 16px 4px 16px; padding: 12px 18px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.assistant { display: grid; gap: 16px; min-width: 0; }
+.who { display: flex; align-items: center; gap: 8px; font: 600 17px var(--display); }
+.who .logo { width: 26px; height: 26px; border-radius: 5px; }
+.who .logo svg { width: 16px; height: 16px; }
+.thinking::after { content: "…"; animation: blink 1.2s infinite; }
+.thinking { color: var(--muted); }
+@keyframes blink { 50% { opacity: .2; } }
 
-                try {
-                    const res = await fetch("/chat", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                            message: text,
-                            session_id: sessionId,
-                        }),
-                    });
-                    const data = await res.json();
-                    sessionId = data.session_id;
+/* Markdown answer */
+.answer { overflow-wrap: anywhere; }
+.answer > :first-child { margin-top: 0; }
+.answer > :last-child { margin-bottom: 0; }
+.answer p, .answer ul, .answer ol { margin: 0 0 12px; }
+.answer li { margin-bottom: 4px; }
+.answer h1, .answer h2, .answer h3, .answer h4 { font: 600 22px var(--display); margin: 22px 0 8px; }
+.answer hr { border: 0; border-top: 1px solid var(--line); margin: 16px 0; }
+.answer a { color: var(--green); }
+.answer.error { color: var(--warn); }
 
-                    // Show each tool the harness ran, above the assistant's answer
-                    for (const call of data.tool_calls || []) {
-                        const details = document.createElement("details");
-                        details.className = "tool";
+/* Tool calls, drawn as stops on a line */
+.tools { border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
+.tools > summary { padding: 12px 18px; font-size: 17px; color: var(--muted); cursor: pointer; }
+.tools > summary b { font: 500 16px var(--mono); color: var(--ink); }
+.stops { list-style: none; margin: 0; padding: 4px 16px 14px; }
+.stop { position: relative; display: grid; gap: 7px; padding: 9px 0 9px 26px; }
+.stop:not(:last-child)::before { content: ""; position: absolute; left: 6px; top: 22px; bottom: -12px; width: 2px; background: var(--line); }
+.dot { position: absolute; left: 0; top: 14px; width: 14px; height: 14px; border-radius: 50%; border: 3px solid var(--green); background: var(--card); }
+.stop.err .dot { border-color: var(--warn); }
+.fn { font: 500 17px var(--mono); }
+.purpose { font-size: 17px; color: var(--muted); margin-left: 8px; }
+.args { display: flex; flex-wrap: wrap; gap: 6px; }
+.arg { font: 15px/1.5 var(--mono); background: var(--sunk); border-radius: 6px; padding: 3px 9px; overflow-wrap: anywhere; }
+.arg i { font-style: normal; color: var(--muted); margin-right: 5px; }
+.err-msg { font-size: 17px; color: var(--warn); }
+.result summary { font-size: 16px; color: var(--green); cursor: pointer; }
+.result pre { margin: 8px 0 0; font: 14px/1.5 var(--mono); background: var(--sunk); border-radius: 8px; padding: 10px 12px; overflow: auto; max-height: 280px; }
 
-                        const summary = document.createElement("summary");
-                        summary.textContent =
-                            "Tool: " + call.name + "(" + JSON.stringify(call.args) + ")";
+/* Cards and panels built from tool results */
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+.card, .panel { border: 1px solid var(--line); background: var(--card); border-radius: 12px; padding: 16px 18px; display: grid; gap: 8px; align-content: start; min-width: 0; }
+.sign { justify-self: start; background: var(--green); color: var(--green-ink); font: 600 13px var(--display); letter-spacing: .06em; text-transform: uppercase; border-radius: 4px; padding: 2px 8px; }
+.addr { font-weight: 600; line-height: 1.3; }
+.muted { color: var(--muted); font-size: 17px; }
+.rent { font: 700 32px/1 var(--display); }
+.rent small { font: 17px var(--body); color: var(--muted); }
+.visit { justify-self: start; background: var(--green); color: var(--green-ink); text-decoration: none; font-size: 17px; font-weight: 600; padding: 6px 15px; border-radius: 8px; white-space: nowrap; }
+.panel h3 { margin: 0; font: 600 20px var(--display); }
+.panel h3 span { font: 18px var(--body); color: var(--muted); }
+.pill { display: inline-block; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; background: var(--green); color: var(--green-ink); border-radius: 999px; padding: 1px 8px; }
 
-                        const result = document.createElement("pre");
-                        result.textContent = call.result;
+/* Commute: one row per mode, fastest flagged on the left */
+.mode { display: grid; grid-template-columns: 110px minmax(0, 1fr) auto; gap: 4px 16px; padding-block: 12px; border-top: 1px solid var(--line); align-items: start; }
+.mode-name { font-weight: 600; display: grid; gap: 4px; justify-items: start; }
+.mode-time { font: 700 23px var(--display); white-space: nowrap; }
+.steps { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.step { font-size: 17px; border-radius: 6px; padding: 2px 9px; background: var(--sunk); }
+.step.ride { background: none; border: 1.5px solid var(--green); font-weight: 600; }
+.arrow { color: var(--muted); }
 
-                        details.appendChild(summary);
-                        details.appendChild(result);
-                        messages.insertBefore(details, loading);
-                    }
-                    loading.querySelector(".content").textContent =
-                        data.response;
-                    loading.classList.remove("loading");
-                } catch (e) {
-                    loading.querySelector(".content").textContent =
-                        "Error: " + e.message;
-                    loading.classList.remove("loading");
-                }
-                sendBtn.disabled = false;
-                userInput.focus();
-            }
+/* Ranking rows */
+.rank-row { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 6px 14px; padding-block: 14px; border-top: 1px solid var(--line); }
+.rank-main { display: grid; gap: 7px; min-width: 0; }
+.rank { width: 34px; height: 34px; border-radius: 50%; background: var(--ink); color: var(--paper); display: grid; place-items: center; font: 700 15px var(--display); }
+.score { font: 700 30px/1 var(--display); text-align: right; }
+.why { margin: 0; padding-left: 20px; color: var(--muted); font-size: 17px; }
+.score small { display: block; font: 15px var(--body); color: var(--muted); margin-top: 3px; }
 
-            sendBtn.addEventListener("click", send);
-            userInput.addEventListener("keydown", function (e) {
-                if (e.key === "Enter") send();
-            });
-            userInput.focus();
-        </script>
-    </body>
+/* Empty chat: welcome and input box sit together in the middle of the screen */
+/* auto margins center them; when the window is too short they shrink to 0 and the welcome text scrolls */
+.chat.empty main { flex: 0 1 auto; margin-top: auto; }
+.chat.empty .composer { margin-bottom: auto; }
+
+/* Composer */
+.composer { padding: 14px 24px 28px; }
+.box { max-width: 900px; margin: 0 auto; display: flex; align-items: flex-end; gap: 8px; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 10px 10px 10px 18px; box-shadow: 0 2px 10px #0000000d; }
+.box:focus-within { border-color: var(--muted); }
+#user-input { flex: 1; border: 0; outline: none; resize: none; background: none; padding-block: 9px; max-height: 220px; min-height: 30px; }
+#send-btn { width: 46px; height: 46px; border-radius: 10px; border: 0; background: var(--green); color: var(--green-ink); font-size: 20px; }
+#send-btn:disabled { opacity: .35; cursor: default; }
+.hint { text-align: center; font-size: 14px; color: var(--muted); margin-top: 6px; }
+
+/* Phones: the sidebar slides in over the chat */
+@media (max-width: 760px) {
+  #app { grid-template-columns: minmax(0, 1fr); }
+  aside { position: fixed; inset: 0 auto 0 0; width: 280px; z-index: 10; transform: translateX(-100%); transition: transform .2s; }
+  aside.open { transform: none; box-shadow: 0 0 0 100vw #0007; }
+  .topbar { display: flex; }
+  #resizer { display: none; }
+  .mode { grid-template-columns: 80px minmax(0, 1fr); }
+  .mode-time { grid-column: 1; grid-row: 2; font-size: 17px; }
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <aside id="sidebar">
+    <div id="resizer" title="Drag to resize"></div>
+    <div class="brand">
+      <div class="logo"><svg width="19" height="19" viewBox="0 0 32 32"><path d="M4 28h24v-6h-7v-6h-7v-6H8V4H4z" /></svg></div>
+      <div><b>Stoop</b><br /><span>NYC rental agent</span></div>
+    </div>
+    <button id="new-chat" type="button">+ New chat</button>
+    <div class="side-label">Recent chats</div>
+    <ul id="history"></ul>
+    <div class="side-note">Chats are saved in this browser.</div>
+  </aside>
+
+  <section class="chat empty" id="chat">
+    <div class="topbar"><button id="menu" type="button" aria-label="Show chats">☰</button>Stoop</div>
+    <main id="scroll">
+      <div id="messages" aria-live="polite">
+        <section id="welcome">
+          <h1>Find an NYC apartment that fits how you live.</h1>
+          <p>Tell Stoop your budget, area and size. It searches about 70,000 rental listings, then checks the commute,
+            the blocks around each place and the building's public records, and ranks your shortlist.</p>
+          <div class="eyebrow">What it can do</div>
+          <ul class="caps">
+            <li>Search listings<small>By borough, neighborhood, price and bedrooms</small></li>
+            <li>Rank your shortlist<small>Weighs value, commute and neighborhood fit</small></li>
+            <li>Check the commute<small>Transit, bike, drive and walk times to any address</small></li>
+            <li>Check building records<small>NYC HPD maintenance violations, like heat or pests</small></li>
+            <li>Check the neighborhood<small>The gyms, laundromats or nightclubs near a listing</small></li>
+          </ul>
+          <p class="note">Listings come from a June to August 2026 snapshot of StreetEasy. Always confirm availability on the listing page.</p>
+        </section>
+      </div>
+    </main>
+    <div class="composer">
+      <div class="box">
+        <textarea id="user-input" rows="1" placeholder="Ask about NYC rentals, e.g. a 1-bedroom in Brooklyn under $3,000"></textarea>
+        <button id="send-btn" type="button" aria-label="Send">↑</button>
+      </div>
+      <div class="hint">Enter to send · Shift+Enter for a new line</div>
+    </div>
+  </section>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const scroll = $("scroll"), messages = $("messages"), welcome = $("welcome");
+const userInput = $("user-input"), sendBtn = $("send-btn"), sidebar = $("sidebar");
+let sessionId = null;  // the backend session; also the id of the saved chat
+let busy = false;
+
+const TOOL_LABELS = {
+  search_listings: "Search listings",
+  rank_listings: "Rank the shortlist",
+  commute_to: "Check the commute",
+  check_neighborhood_fit: "Check the neighborhood",
+  check_building_violations: "Check building records",
+};
+const MODES = { transit: "Transit", bicycle: "Bike", drive: "Drive", walk: "Walk" };
+const SCORES = { price_value: "Price", commute: "Commute", neighborhood_fit: "Neighborhood fit" };
+
+// ---------- helpers ----------
+
+// Build an element. Text always goes in as textContent, so tool data can never inject HTML.
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text != null) node.textContent = text;
+  return node;
+}
+function parseJSON(text) {
+  try { return JSON.parse(text); } catch { return null; }
+}
+const isError = (obj) => !obj || obj.error || obj.ok === false;
+const money = (n) => "$" + Math.round(n).toLocaleString("en-US");
+const minutes = (n) => (n < 60 ? n + " min" : Math.floor(n / 60) + " h " + (n % 60) + " min");
+
+function visitLink(url) {
+  if (typeof url !== "string" || !/^https?:\/\//.test(url)) return null;
+  const a = el("a", "visit", "Visit ↗");
+  a.href = url;
+  a.target = "_blank";
+  a.rel = "noopener noreferrer";
+  return a;
+}
+
+// ---------- saved chats (localStorage: [{id, title, updated, turns: [{user, data}]}]) ----------
+
+const STORE = "stoop.chats.v1";
+function loadChats() {
+  try { return JSON.parse(localStorage.getItem(STORE)) || []; } catch { return []; }
+}
+function saveChats(chats) {
+  try { localStorage.setItem(STORE, JSON.stringify(chats)); } catch { /* storage full or blocked: history just isn't kept */ }
+}
+
+function renderSidebar() {
+  const list = $("history");
+  list.replaceChildren();
+  const chats = loadChats().sort((a, b) => b.updated - a.updated);
+  if (!chats.length) list.appendChild(el("li", "empty", "No chats yet"));
+  for (const chat of chats) {
+    const item = el("li", chat.id === sessionId ? "active" : "");
+    const open = el("button", "open", chat.title);
+    open.title = chat.title;
+    open.onclick = () => openChat(chat.id);
+    const del = el("button", "del", "×");
+    del.setAttribute("aria-label", "Delete chat");
+    del.title = "Delete chat";
+    del.onclick = () => deleteChat(chat.id, chat.title);
+    item.append(open, del);
+    list.appendChild(item);
+  }
+}
+
+function saveTurn(userText, data) {
+  const chats = loadChats();
+  let chat = chats.find((c) => c.id === data.session_id);
+  if (!chat) {
+    chat = { id: data.session_id, title: userText.slice(0, 60), turns: [] };
+    chats.push(chat);
+  }
+  chat.turns.push({ user: userText, data: { response: data.response, tool_calls: data.tool_calls } });
+  chat.updated = Date.now();
+  saveChats(chats);
+  renderSidebar();
+}
+
+function showWelcome(show) {
+  welcome.hidden = !show;
+  $("chat").classList.toggle("empty", show);
+}
+
+function clearMessages() {
+  for (const node of [...messages.children]) if (node !== welcome) node.remove();
+}
+
+function openChat(id) {
+  if (busy) return;
+  const chat = loadChats().find((c) => c.id === id);
+  if (!chat) return;
+  sessionId = chat.id;  // new messages continue this backend session
+  clearMessages();
+  showWelcome(false);
+  for (const turn of chat.turns) {
+    messages.appendChild(el("div", "user", turn.user));
+    const reply = newReply();
+    fillReply(reply, turn.data);
+  }
+  renderSidebar();
+  sidebar.classList.remove("open");
+  scroll.scrollTo({ top: scroll.scrollHeight });
+}
+
+function newChat() {
+  if (busy) return;
+  sessionId = null;
+  clearMessages();
+  showWelcome(true);
+  renderSidebar();
+  sidebar.classList.remove("open");
+  userInput.focus();
+}
+
+function deleteChat(id, title) {
+  if (!confirm(`Delete "${title}"? This can't be undone.`)) return;
+  fetch("/clear?session_id=" + encodeURIComponent(id), { method: "POST" }).catch(() => {});
+  saveChats(loadChats().filter((c) => c.id !== id));
+  if (id === sessionId) newChat();
+  else renderSidebar();
+}
+
+// ---------- model answer (Markdown) ----------
+
+function renderMarkdown(text, rankings) {
+  const box = el("div", "answer");
+  if (window.marked && window.DOMPurify) {
+    // "~154 meters" means "about 154 meters"; a single ~ must not turn the text between two of them into strikethrough
+    const escaped = text.replace(/(^|[^~])~(?!~)/g, "$1\\~");
+    box.innerHTML = DOMPurify.sanitize(marked.parse(escaped, { breaks: true }));
+  } else {
+    box.textContent = text;  // CDN unavailable: still show the plain text
+    box.style.whiteSpace = "pre-wrap";
+  }
+  for (const a of box.querySelectorAll("a")) {
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    // A bare URL or "View listing" link is dropped: the listing cards already have a Visit button.
+    // An address the model linked stays as a link on the address.
+    if (/^(https?:\/\/\S+|(view|see|open)?\s*(the\s*)?(full\s*)?(listing|link|here|details)|visit)$/i.test(a.textContent.trim())) {
+      const item = a.closest("li");
+      a.remove();
+      // Drop a bullet that held only the link, e.g. "Listing: <link>"
+      if (item && /^[\s\w]{0,20}:?\s*$/.test(item.textContent) && !item.querySelector("ul, ol")) item.remove();
+    } else {
+      a.append(" ↗");
+    }
+  }
+  // Clean up brackets left empty by a removed link, e.g. "$1,500/mo ( )"
+  box.normalize();  // join the text pieces on either side of a removed link
+  const walker = document.createTreeWalker(box, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    node.nodeValue = node.nodeValue.replace(/\s*\(\s*\)/g, "").replace(/\s*\[\s*\]/g, "");
+  }
+  if (rankings) mergeRankingSummary(box, rankings);
+  hideListingIds(box);
+  return box;
+}
+
+// The agent often ends a ranking with a "Ranking Summary" that repeats the apartments listed above.
+// Move each summary line under its apartment as a "Why #N" bullet (the agent's own words), then drop the summary.
+// If any line can't be matched to an apartment, leave the summary as it is so nothing is lost.
+function mergeRankingSummary(box, rankings) {
+  const isHeading = (n) =>
+    /^H[1-6]$/.test(n.tagName) ||
+    (n.tagName === "P" && n.children.length === 1 && n.firstElementChild.tagName === "STRONG" &&
+      n.textContent.trim() === n.firstElementChild.textContent.trim());
+  // The agent sometimes calls this section "Ranking & Recommendation"; show it as "Ranking Summary"
+  for (const n of box.children) {
+    if (isHeading(n) && /ranking\s*(&|and)\s*recommendations?/i.test(n.textContent)) {
+      (n.tagName === "P" ? n.firstElementChild : n).textContent = "Ranking Summary";
+    }
+  }
+  const title = [...box.children].find((n) => isHeading(n) && /summary/i.test(n.textContent));
+  if (!title) return;
+  const section = [];
+  for (let n = title.nextElementSibling; n && !isHeading(n) && n.tagName !== "HR"; n = n.nextElementSibling) section.push(n);
+  const items = section.flatMap((n) => [...n.querySelectorAll("li")]);
+  if (!items.length) return;
+
+  // A short key for an address, e.g. "325 79th Street, Unit 26" -> "325 79th"
+  const key = (text) => {
+    const m = (text || "").match(/\b(\d+[a-z-]*)\s+([a-z0-9]+)/i);
+    return m ? (m[1] + " " + m[2]).toLowerCase() : null;
+  };
+  const apartments = [...box.querySelectorAll("h1, h2, h3, h4, h5, h6, li, p")]
+    .filter((n) => n !== title && !section.some((s) => s.contains(n)));
+
+  const moves = [];
+  for (const li of items) {
+    const text = li.textContent;
+    const id = (text.match(/\d{6,}/) || [])[0];
+    const ranked = id && rankings.find((r) => String(r.listing_id) === id);
+    const k = key(ranked && ranked.listing ? ranked.listing.address : text.replace(/listing\s*#?\d{6,}/i, ""));
+    const target = k && apartments.find((n) => n.textContent.toLowerCase().includes(k));
+    if (!target) return;  // can't place this line: keep the summary untouched
+    const why = text.includes(":") ? text.slice(text.indexOf(":") + 1).trim() : text.trim();
+    moves.push([target, why]);
+  }
+  for (const [target, why] of moves) {
+    let list = target.tagName === "LI" ? target.querySelector("ul") : target.nextElementSibling;
+    if (!list || list.tagName !== "UL") {
+      list = document.createElement("ul");
+      target.tagName === "LI" ? target.appendChild(list) : target.after(list);
+    }
+    list.appendChild(el("li", null, why));
+  }
+  const before = title.previousElementSibling;
+  title.remove();
+  section.forEach((n) => n.remove());
+  if (before && before.tagName === "HR" && !before.nextElementSibling) before.remove();  // the divider the agent put before the summary
+}
+
+// Listing IDs are for the tools, not for people: drop "(Listing ID: 5103760)" and "ID: 5103760" lines from the answer
+function hideListingIds(box) {
+  // "Value Context: …" repeats the price note in the ranking panel, so drop it wherever it appears
+  for (const node of box.querySelectorAll("li, p")) {
+    if (/^\s*value context\b/i.test(node.textContent)) node.remove();
+  }
+  for (const li of box.querySelectorAll("li")) {
+    if (/^\s*(listing\s*)?id\s*:?\s*#?\d{5,}\s*$/i.test(li.textContent)) li.remove();
+  }
+  const walker = document.createTreeWalker(box, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    node.nodeValue = node.nodeValue
+      .replace(/\s*\(\s*(listing\s*)?id\s*:?\s*#?\d{5,}\s*\)/gi, "")
+      .replace(/,?\s*\blisting\s*id\s*:?\s*#?\d{5,}/gi, "")
+      .replace(/\s*\(\s*value context\s*:[^)]*\)/gi, "");
+  }
+}
+
+// ---------- tool calls: name, inputs, result ----------
+
+function renderToolCalls(calls) {
+  const box = el("details", "tools");
+  box.open = true;
+  const summary = el("summary", null, `Used ${calls.length} tool${calls.length > 1 ? "s" : ""} · `);
+  summary.appendChild(el("b", null, calls.map((c) => c.name).join(", ")));
+  const stops = el("ol", "stops");
+  for (const call of calls) {
+    const parsed = parseJSON(call.result);
+    const stop = el("li", "stop" + (isError(parsed) ? " err" : ""));
+    const head = el("div");
+    head.append(el("span", "fn", call.name), el("span", "purpose", TOOL_LABELS[call.name] || ""));
+    stop.append(el("span", "dot"), head);
+
+    // The inputs the model passed, as key/value chips
+    const args = el("div", "args");
+    for (const [key, value] of Object.entries(call.args || {})) {
+      const shown = Array.isArray(value) && value.some((v) => typeof v === "object")
+        ? value.length + " items"
+        : [].concat(value).join(", ");
+      const chip = el("span", "arg", shown);
+      chip.prepend(el("i", null, key));
+      args.appendChild(chip);
+    }
+    if (args.children.length) stop.appendChild(args);
+    if (parsed && isError(parsed)) {
+      stop.appendChild(el("div", "err-msg", [parsed.error, parsed.suggestion].filter(Boolean).join(" ")));
+    }
+    const result = el("details", "result");
+    result.append(el("summary", null, "View result"), el("pre", null, parsed ? JSON.stringify(parsed, null, 2) : call.result));
+    stop.appendChild(result);
+    stops.appendChild(stop);
+  }
+  box.append(summary, stops);
+  return box;
+}
+
+// ---------- cards and panels, built from the tools' JSON ----------
+
+function panel(title, subtitle) {
+  const box = el("div", "panel");
+  const h = el("h3", null, title + " ");
+  if (subtitle) h.appendChild(el("span", null, subtitle));
+  box.appendChild(h);
+  return box;
+}
+
+function listingCards(data) {
+  const grid = el("div", "cards");
+  for (const r of data.results || []) {
+    const card = el("article", "card");
+    if (r.neighborhood) card.appendChild(el("span", "sign", r.neighborhood));
+    card.append(el("div", "addr", r.address), el("div", "muted", r.borough));
+    const rent = el("div", "rent", money(r.effective_rent) + " ");
+    rent.appendChild(el("small", null, "/ month"));
+    const facts = [r.bedrooms === 0 ? "Studio" : r.bedrooms + " bd", r.bathrooms + " ba"];
+    if (r.furnished) facts.push("Furnished");
+    if (r.is_new_development) facts.push("New building");
+    if (r.available_date) facts.push("Available " + new Date(r.available_date).toLocaleDateString("en-US", { month: "short", day: "numeric" }));
+    card.append(rent, el("div", "muted", facts.join(" · ")));
+    const link = visitLink(r.url);
+    if (link) card.appendChild(link);
+    grid.appendChild(card);
+  }
+  return grid.children.length ? grid : null;
+}
+
+function commutePanel(data) {
+  const options = data.options || [];
+  if (!options.length) return null;
+  const box = panel(data.origin, "→ " + data.destination);
+  for (const o of options) {
+    const row = el("div", "mode");
+    const name = el("div", "mode-name", MODES[o.mode] || o.mode);
+    if (o.mode === data.fastest_mode) name.appendChild(el("span", "pill", "Fastest"));
+
+    const middle = el("div");
+    if (o.route) {
+      // "Walk 5 min -> 1 Line subway (...) -> Walk 2 min" becomes a row of steps
+      const steps = el("div", "steps");
+      o.route.split(" -> ").forEach((step, i) => {
+        if (i) steps.appendChild(el("span", "arrow", "→"));
+        steps.appendChild(el("span", "step" + (/^Walk/.test(step) ? "" : " ride"), step));
+      });
+      middle.appendChild(steps);
+    }
+    const meta = o.note ? [o.note] : [
+      o.distance_mi != null && o.distance_mi + " mi",
+      o.arrive_at && "arrive " + o.arrive_at,
+      o.transfers != null && (o.transfers === 1 ? "1 transfer" : o.transfers + " transfers"),
+      o.mode === "drive" && "parking not included",
+    ];
+    middle.appendChild(el("div", "muted", meta.filter(Boolean).join(" · ")));
+    row.append(name, middle, el("div", "mode-time", o.duration_min != null ? minutes(o.duration_min) : "—"));
+    box.appendChild(row);
+  }
+  return box;
+}
+
+function rankingPanel(data) {
+  const rankings = [...(data.rankings || [])].sort((a, b) => a.rank - b.rank);
+  if (!rankings.length) return null;
+  const box = panel("Your shortlist, ranked");
+
+  for (const r of rankings) {
+    const info = r.listing || {};
+    const row = el("div", "rank-row");
+    const main = el("div", "rank-main");
+    main.append(el("div", "addr", info.address), el("div", "muted", [info.neighborhood, money(info.effective_rent) + "/mo"].join(" · ")));
+    // Why it's in this spot: only the reasons and warnings rank_listings returned for this listing
+    const why = [...(r.reasons || []), ...(r.warnings || [])];
+    if (r.dealbreaker_flag) why.unshift("Has a dealbreaker right next door.");
+    if (why.length) {
+      const list = el("ul", "why");
+      for (const reason of why) list.appendChild(el("li", null, reason));
+      main.appendChild(list);
+    }
+    const link = visitLink(info.url);
+    if (link) main.appendChild(link);
+    // One decimal, so listings with close scores don't all look like the same number
+    const score = el("div", "score", Number(r.overall_score).toFixed(1).replace(/\.0$/, ""));
+    score.appendChild(el("small", null, "overall / 100"));
+    row.append(el("span", "rank", r.rank), main, score);
+    box.appendChild(row);
+  }
+  return box;
+}
+
+const RESULT_VIEWS = {
+  search_listings: listingCards,
+  commute_to: commutePanel,
+  rank_listings: rankingPanel,
+};
+
+// ---------- chat ----------
+
+function newReply() {
+  const reply = el("div", "assistant");
+  const who = el("div", "who", "Stoop");
+  who.prepend(document.querySelector(".brand .logo").cloneNode(true));
+  reply.appendChild(who);
+  messages.appendChild(reply);
+  return reply;
+}
+
+// Show one /chat response: tool calls, then result cards, then the model's answer
+function fillReply(reply, data) {
+  const calls = data.tool_calls || [];
+  if (calls.length) reply.appendChild(renderToolCalls(calls));
+  // If the agent searched more than once (e.g. narrowed the area), only its last successful search is the one it used
+  const lastSearch = calls.findLastIndex((c) => c.name === "search_listings" && !isError(parseJSON(c.result)));
+  calls.forEach((call, i) => {
+    if (call.name === "search_listings" && i !== lastSearch) return;
+    const result = parseJSON(call.result);
+    const view = RESULT_VIEWS[call.name];
+    const block = view && !isError(result) ? view(result) : null;
+    if (block) reply.appendChild(block);
+  });
+  const ranking = calls.map((c) => c.name === "rank_listings" && parseJSON(c.result)).find((d) => d && d.rankings);
+  reply.appendChild(renderMarkdown(data.response || "(No answer was returned.)", ranking && ranking.rankings));
+}
+
+function autoGrow() {
+  userInput.style.height = "auto";
+  userInput.style.height = userInput.scrollHeight + "px";
+  sendBtn.disabled = busy || !userInput.value.trim();
+}
+
+async function send() {
+  const text = userInput.value.trim();
+  if (!text || busy) return;
+  busy = true;
+  userInput.value = "";
+  autoGrow();
+  showWelcome(false);
+  messages.appendChild(el("div", "user", text));
+  const reply = newReply();
+  const thinking = reply.appendChild(el("div", "thinking", "Thinking"));
+  scroll.scrollTo({ top: scroll.scrollHeight, behavior: "smooth" });
+
+  try {
+    const res = await fetch("/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: text, session_id: sessionId }),
+    });
+    if (!res.ok) throw new Error("the server answered " + res.status);
+    const data = await res.json();
+    sessionId = data.session_id;
+    thinking.remove();
+    fillReply(reply, data);
+    saveTurn(text, data);
+  } catch (e) {
+    thinking.remove();
+    reply.appendChild(el("div", "answer error", `Couldn't reach Stoop: ${e.message}. Check that the server is running and try again.`));
+  }
+  busy = false;
+  autoGrow();
+  userInput.focus();
+  scroll.scrollTo({ top: scroll.scrollHeight, behavior: "smooth" });
+}
+
+sendBtn.addEventListener("click", send);
+$("new-chat").addEventListener("click", newChat);
+$("menu").addEventListener("click", () => sidebar.classList.toggle("open"));
+userInput.addEventListener("input", autoGrow);
+userInput.addEventListener("keydown", (e) => {
+  // isComposing: don't send while a Chinese/Japanese input method is still picking characters
+  if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+    e.preventDefault();
+    send();
+  }
+});
+// Drag the sidebar's right edge to resize it; the width is remembered in this browser
+const SIDE_W = "stoop.sidebarWidth";
+function setSidebarWidth(px) {
+  const width = Math.max(220, Math.min(520, px));
+  $("app").style.setProperty("--side-w", width + "px");
+  return width;
+}
+try { const saved = Number(localStorage.getItem(SIDE_W)); if (saved) setSidebarWidth(saved); } catch {}
+$("resizer").addEventListener("pointerdown", (e) => {
+  e.preventDefault();
+  const resizer = e.currentTarget;
+  resizer.classList.add("dragging");
+  document.body.classList.add("resizing");
+  let width;
+  const move = (ev) => (width = setSidebarWidth(ev.clientX));
+  window.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", () => {
+    window.removeEventListener("pointermove", move);
+    resizer.classList.remove("dragging");
+    document.body.classList.remove("resizing");
+    try { if (width) localStorage.setItem(SIDE_W, width); } catch {}
+  }, { once: true });
+});
+
+renderSidebar();
+autoGrow();
+userInput.focus();
+</script>
+</body>
 </html>

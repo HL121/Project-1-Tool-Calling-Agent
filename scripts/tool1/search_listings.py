@@ -84,6 +84,11 @@ def listing_search_result(listing_id: object, row: pd.Series) -> dict:
     borough = json_value(row.get("borough"))
     state = json_value(row.get("state"))
     zip_code = json_value(row.get("zip_code"))
+    # A complete, map-ready address for commute_to. Without the borough/town, state and ZIP, Google can't place
+    # addresses like "1-10 56th Avenue". NJ listings use the town (their borough is just "New Jersey").
+    place = json_value(row.get("neighborhood")) if state == "NJ" else borough
+    state_zip = " ".join(str(part) for part in (state, zip_code) if part)
+    full_address = ", ".join(str(part) for part in (address, place, state_zip) if part)
 
     asking_rent = json_value(row.get("price"))
     effective_rent = json_value(row.get("effective_rent"))
@@ -94,6 +99,7 @@ def listing_search_result(listing_id: object, row: pd.Series) -> dict:
     return {
         "listing_id": json_value(listing_id),
         "address": address,
+        "full_address": full_address,
         "street": street,
         "unit": unit,
         "neighborhood": json_value(row.get("neighborhood")),

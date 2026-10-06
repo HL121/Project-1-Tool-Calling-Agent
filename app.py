@@ -268,7 +268,7 @@ RESPONSE STYLE
 - Explain important tradeoffs, missing signals, and limitations.
 - Do not overwhelm the user with raw tool output.
 """.strip()
-MAX_TOOL_ROUNDS = 5
+MAX_TOOL_ROUNDS = 20
 
 # --- The Harness ---
 

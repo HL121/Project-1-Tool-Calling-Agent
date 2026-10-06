@@ -161,9 +161,12 @@ def commute_to(origin: str, destination: str,
         # Earliest arrival first (a short ride that leaves in 30 min is not the best option).
         # With arrive_by, latest arrival first instead, so the user can leave as late as possible.
         # Walk/bike/drive have no arrival time, so they fall back to duration.
-        cleaned = sorted((clean_route_info(route) for route in routes),
-                         key=lambda r: (r.get("_arrival", ""), r["duration_min"]),
-                         reverse=bool(arrive_by))
+        cleaned = [clean_route_info(route) for route in routes]
+        if mode == "transit":
+            # Google sometimes offers "just walk" as a transit route; keep it only if there is no bus or subway option
+            rides = [r for r in cleaned if "transfers" in r]
+            cleaned = rides or cleaned
+        cleaned = sorted(cleaned, key=lambda r: (r.get("_arrival", ""), r["duration_min"]), reverse=bool(arrive_by))
         # The same line at a later time is not a real alternative, so keep each route once.
         unique = []
         for route in cleaned:
