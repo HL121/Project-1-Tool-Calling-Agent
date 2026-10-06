@@ -293,7 +293,8 @@ headers = {
 
 ### 文件结构
 
-- `tools.py`：agent-facing wrapper、参数校验、function schema 和 `TOOL_MAP` 注册。
+- `tools.py`：共享数据注入、薄适配层、function schema 和 `TOOL_MAP` 注册。
+- `scripts/tool4/check_building_violations.py`：agent-facing 参数校验与 HPD 实现调用。
 - `scripts/tool4/building_violations.py`：地址处理、HPD 请求、分页、重试、分类和汇总。
 - `scripts/tool4/analyze_hpd_categories.py`：开发期分类规则分析辅助脚本，不参与在线 Tool 调用。
 - `data/hpd_analysis/hpd_violation_category_rules.json`：最终使用的类别正则映射表。
@@ -558,7 +559,8 @@ agent 应该从上一轮搜索结果中找到“第二套”对应的 `listing_i
 
 ## Tool 1 implementation
 
-`search_listings` is implemented and registered in `tools.py`. It searches the
+`search_listings` is implemented in `scripts/tool1/search_listings.py` and
+registered through the thin adapters in `tools.py`. It searches the
 shared `data/nyc_rental_listings_clean.csv` candidate pool already loaded by the
 other listing-based tools, so it does not repeat the data preparation pipeline.
 

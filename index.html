@@ -95,6 +95,14 @@
                 letter-spacing: 0.05em;
                 color: #b45309;
             }
+            .tool summary {
+                cursor: pointer;
+            }
+            .tool pre {
+                margin-top: 0.75rem;
+                white-space: pre-wrap;
+                word-break: break-word;
+            }
             button:disabled {
                 opacity: 0.3;
             }
@@ -159,18 +167,19 @@
 
                     // Show each tool the harness ran, above the assistant's answer
                     for (const call of data.tool_calls || []) {
-                        const div = document.createElement("div");
-                        div.className = "tool";
-                        const label = document.createElement("span");
-                        label.className = "label";
-                        label.textContent = "tool call  ";
-                        div.appendChild(label);
-                        div.appendChild(
-                            document.createTextNode(
-                                call.name + "(" + JSON.stringify(call.args) + ")\n→ " + call.result,
-                            ),
-                        );
-                        messages.insertBefore(div, loading);
+                        const details = document.createElement("details");
+                        details.className = "tool";
+
+                        const summary = document.createElement("summary");
+                        summary.textContent =
+                            "Tool: " + call.name + "(" + JSON.stringify(call.args) + ")";
+
+                        const result = document.createElement("pre");
+                        result.textContent = call.result;
+
+                        details.appendChild(summary);
+                        details.appendChild(result);
+                        messages.insertBefore(details, loading);
                     }
                     loading.querySelector(".content").textContent =
                         data.response;
