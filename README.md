@@ -1,33 +1,33 @@
-# NYC Rental Agent：`commute_to` 和 `check_neighborhood_fit`
+# NYC Rental Agent: `commute_to` and `check_neighborhood_fit`
 
-两个 tool 都在 `tools.py` 里，共用环境变量 `GOOGLE_MAPS_API_KEY`。Google Cloud 项目需要启用 **Routes API** 和 **Places API (New)**。本地运行：在 `.env` 里写 `GOOGLE_MAPS_API_KEY=...`，然后执行 `uv run --env-file .env python app.py`。
+Both tools live in `tools.py` and share the `GOOGLE_MAPS_API_KEY` environment variable. The Google Cloud project needs **Routes API** and **Places API (New)** enabled. To run locally, put `GOOGLE_MAPS_API_KEY=...` in `.env`, then run `uv run --env-file .env python app.py`.
 
 ## Tool 3: `commute_to`
 
-查询从一个地址到目的地的通勤方式和时间。数据来自 Google Routes API。
+Gets commute options and times from an address to a destination, using the Google Routes API.
 
-### 参数
+### Parameters
 
-| 参数 | 必填 | 说明 |
+| Parameter | Required | Description |
 | --- | --- | --- |
-| `origin` | 是 | 房源的完整地址，例如 `610 West 150th Street, New York, NY` |
-| `destination` | 是 | 目的地，地名或地址都可以，例如 `Columbia University, New York, NY` |
-| `modes` | 否 | `transit` / `walk` / `bicycle` / `drive` 的列表；不传就四种都查 |
-| `transit_preference` | 否 | `subway` / `bus` / `less_walking` / `fewer_transfers`，只对 transit 有效 |
-| `departure_time` | 否 | 出发时间，RFC3339 格式，例如 `2026-10-05T08:30:00-04:00`；不传就按现在出发 |
-| `arrive_by` | 否 | 最晚到达时间，格式同上，只对 transit 有效；同时传两个时间时以它为准 |
+| `origin` | Yes | Full listing address, e.g. `610 West 150th Street, New York, NY` |
+| `destination` | Yes | Place name or address, e.g. `Columbia University, New York, NY` |
+| `modes` | No | List of `transit` / `walk` / `bicycle` / `drive`; defaults to all four |
+| `transit_preference` | No | `subway` / `bus` / `less_walking` / `fewer_transfers`; transit only |
+| `departure_time` | No | RFC3339, e.g. `2026-10-05T08:30:00-04:00`; defaults to now |
+| `arrive_by` | No | Latest arrival time, same format; transit only; takes priority if both times are given |
 
-### 逻辑
+### Logic
 
-1. 如果填了 `modes` 或 `transit_preference`，检查是否合法，不合法就返回 error，并列出合法值。没填就跳过检查：`modes` 默认查全部四种，`transit_preference` 默认不加偏好。
-2. 每种出行方式各请求一次 Routes API，几种方式同时请求。
-3. transit 的每条路线压缩成：时长、距离、换乘次数、步行分钟、上车时间、**实际到达时间**，以及一句路线描述。连续的步行合并成一段。
-4. transit 按**到达时间**排序，最早到的排第一。Google 的 `duration` 不包括等车时间，所以不按时长排。传了 `arrive_by` 时反过来，排最晚到的，让用户尽量晚出门。同一条线路只是班次不同的只保留一班，最多再给 2 条备选。
-5. 有两种以上方式查到路线时，返回 `fastest_mode`。
+1. If `modes` or `transit_preference` is given, validate it and return an error listing the valid values if it is invalid. If omitted, `modes` defaults to all four and no transit preference is applied.
+2. Send one Routes API request per mode, all in parallel.
+3. Each transit route is condensed to: duration, distance, transfers, walking minutes, first boarding time, **actual arrival time**, and a one-line route description. Consecutive walking steps are merged.
+4. Transit routes are sorted by **arrival time**, earliest first, since Google's `duration` excludes waiting time. With `arrive_by`, the latest arrival comes first so the user can leave as late as possible. Routes that differ only by departure are deduplicated, with up to 2 alternatives.
+5. When two or more modes return routes, `fastest_mode` is included.
 
-错误处理：参数不合法；所有方式都找不到路线（请用户补全地址，不编造时间）；API 请求失败。
+Errors: invalid parameters; no route for any mode (ask the user for a fuller address, never make up times); API request failure.
 
-### 输出示例
+### Example output
 
 `commute_to("610 West 150th Street, New York, NY", "Columbia University, New York, NY", modes=["transit", "bicycle"])`
 
@@ -60,29 +60,29 @@
 
 ## Tool 5: `check_neighborhood_fit`
 
-检查一套房的周边是否符合用户的生活习惯：想要附近有的（wants）和不想挨着的雷区（avoids）。房源坐标来自 `data/nyc_rental_listings_clean.csv`，周边地点来自 Google Places Text Search。
+Checks whether a listing's surroundings match the user's lifestyle: places they want nearby (wants) and places they don't want next door (avoids). Listing coordinates come from `data/nyc_rental_listings_clean.csv`; nearby places come from Google Places Text Search.
 
-### 参数
+### Parameters
 
-| 参数 | 必填 | 说明 |
+| Parameter | Required | Description |
 | --- | --- | --- |
-| `listing_id` | 是 | CSV 里的 `id`，来自 search 结果 |
-| `wants` | 否 | 想要附近有的地点，自由文本，例如 `["fitness gym", "laundromat", "dog run", "Trader Joe's"]` |
-| `avoids` | 否 | 雷区，自由文本，例如 `["nightclub", "fire station"]` |
+| `listing_id` | Yes | The CSV `id`, from search results |
+| `wants` | No | Free-text places to have nearby, e.g. `["fitness gym", "laundromat", "dog run", "Trader Joe's"]` |
+| `avoids` | No | Free-text dealbreakers, e.g. `["nightclub", "fire station"]` |
 
-`wants` 和 `avoids` 都是可选的，但至少要有一个。搜索词用具体的英文效果最好，例如用 `fitness gym` 而不是 `gym`，用 `nightclub` 而不是 `bar`（安静的酒吧并不吵）。
+Both are optional, but at least one is required. Specific English terms work best, e.g. `fitness gym` instead of `gym`, `nightclub` instead of `bar` (a quiet bar isn't noisy).
 
-### 逻辑
+### Logic
 
-1. `wants` 和 `avoids` 都为空时，返回 error，提示先问用户的生活习惯。
-2. 用 `listing_id` 在 CSV 里查经纬度，找不到就返回 error。
-3. 每一项在房源周围做一次文字搜索，所有项同时请求，自己用经纬度计算距离，取最近的一个。
-4. 判断：want 在 **800 米**（步行约 10 分钟）内算满足；avoid 在 **150 米**（大约同一个街区）内才算踩雷。超出范围也会返回最近的地点，方便 agent 说明"最近的要走多远"。
-5. 返回每一项的结果，以及给 ranking 用的 `wants_met`、`wants_total`、`dealbreakers_hit`。
+1. If both `wants` and `avoids` are empty, return an error asking the agent to ask about the user's lifestyle first.
+2. Look up the listing's coordinates by `listing_id`; return an error if not found.
+3. Run one text search per item around the listing, all in parallel, compute distances from coordinates, and keep the nearest result.
+4. A want is met within **800 m** (~10 min walk); an avoid is hit only within **150 m** (about the same block). The nearest place is returned even when out of range, so the agent can say how far the closest one is.
+5. Return per-item results plus `wants_met`, `wants_total`, and `dealbreakers_hit` for ranking.
 
-错误处理：没有偏好；`listing_id` 不存在；API 请求失败。
+Errors: no preferences; unknown `listing_id`; API request failure.
 
-### 输出示例
+### Example output
 
 `check_neighborhood_fit(5096445, wants=["gym", "laundromat", "dog park"], avoids=["bar", "fire station"])`
 
@@ -104,12 +104,12 @@
 }
 ```
 
-## `app.py` 的 agent prompt 设计思路
+## Agent prompt design notes for `app.py`
 
-tool 本身的用法写在 `tools.py` 的 `TOOLS` 描述里。system prompt可以考虑包含以下几点：
+Tool usage is documented in the `TOOLS` descriptions in `tools.py`. The system prompt could cover:
 
-- **search 结果要带完整地址和 `id`**：`commute_to` 用地址，`check_neighborhood_fit` 用 `id`。用户说"第二套"时，模型从对话历史里取对应的值。
-- **把纽约当前时间放进 prompt**：用户说"明天 9 点要到"时，模型才能填对 `arrive_by` 的日期和时区。
-- **先问生活习惯**：用户找房时没提到生活习惯，就问一次；说过就不再问。用户没有偏好时，不调用 `check_neighborhood_fit`，ranking 也不考虑周边。`wants` 和 `avoids` 只能来自用户说过的话，不能编造，并在整个对话中沿用。
-- **ranking 使用的字段**：通勤时间，以及 `wants_met`、`dealbreakers_hit`。踩雷的房源排在后面。
-- **解释结果用自然语言**：说出线路、到达时间、地点名字和距离，并联系用户说过的习惯；开车要提醒不包括停车时间；不展示原始计数，也不编造 tool 没有返回的时间或地点。
+- **Search results include the full address and `id`**: `commute_to` uses the address, `check_neighborhood_fit` uses the `id`. When the user says "the second one", the model takes the value from the conversation history.
+- **Include the current NYC time**: so the model can fill in the right date and time zone for `arrive_by` when the user says "I need to be there by 9 tomorrow".
+- **Ask about lifestyle first**: if the user hasn't mentioned it, ask once; don't ask again. With no preferences, skip `check_neighborhood_fit` and ignore surroundings in ranking. `wants` and `avoids` must come from what the user said, never made up, and carry through the conversation.
+- **Ranking fields**: commute time, `wants_met`, and `dealbreakers_hit`. Listings with dealbreakers rank lower.
+- **Explain results in natural language**: mention routes, arrival times, place names and distances, tied back to the user's habits; note that driving excludes parking time; don't show raw counts or invent times or places the tool didn't return.
